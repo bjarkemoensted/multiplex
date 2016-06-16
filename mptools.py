@@ -48,6 +48,10 @@ def _find_pos(_list, target):
     return ind
         
 def select_nonuniform(_list, cdf):
+    '''Randomly selects an element of _list using cumulative distribution
+    cdf, i.e. if cdf = [0.3, 0.7, 1.0] the three corresponding elements
+    are selected with probabilities 0.3, 0.4 and 0.3, respectively.'''
+    
     target = np.random.uniform()
     try:
         i = _find_pos(cdf, target)
@@ -57,6 +61,9 @@ def select_nonuniform(_list, cdf):
     return _list[i]
 
 def get_random_graph(n, directional = False):
+    '''Generates a random graph in which every possible link does or doesn't
+    exist with p = 50%.'''
+    
     if directional:
         A = np.random.rand(n, n).round()
         for i in xrange(n):
@@ -72,10 +79,16 @@ def get_random_graph(n, directional = False):
             #
         #
     G = nx.from_numpy_matrix(A)
-    print A
     return G
 
 def rewire_ba(G, n = 1):
+    '''Rewires the input graph n times in the following fashion: 
+    A random link (u, v) is selected and removed. u is then connected to a 
+    random node that a) is not and b) is not already connected to u.
+    The probability of selecting a given node as the endpoint is proportional
+    to its degree, as per the Barabasi-Albert algorithm for growing networks
+    with preferential attachment.'''
+    
     nodelist = G.nodes()
     np.random.shuffle(nodelist)
     for _ in xrange(n):
@@ -86,7 +99,6 @@ def rewire_ba(G, n = 1):
         
         # Rewire to random other node weighted by their degrees
         candidates = set(G.nodes_iter()) - set([u]) - set(G.neighbors_iter(u))
-        print candidates, G.neighbors(u)
         try:
             norm = 1.0/reduce(operator.add, itertools.imap(G.degree, candidates))
             cdf = np.cumsum(map(lambda n: G.degree(n)*norm, candidates))
@@ -102,22 +114,41 @@ def rewire_ba(G, n = 1):
 #    returns np.matrix
 
 def unroll_adjacency_matrix(G):
-    result = []
-    M = nx.to_numpy_matrix(G)
-    rows, cols = M.shape
-    for i in xrange(rows):
-        for j in xrange(i + 1, cols):
-            result.append(M[i, j])
-        #
+    '''"Unrolls" the adjacency matrix of the input graph into a vector. This
+    is done by extracting all off-diagonal elements of the nxn adjacency matrix
+    and concatenating them into an n(n - 1)/2 dimensional array.
+    Example:
+    [[0, 1, 0],
+     [1, 0, 1],
+     [0, 1, 0]]
+     gives [1, 0, 1].'''
+
+    # Number of nodes in the graph
+    n = len(G)
+    # Length of the unrolled matrix
+    dim = n*(n - 1)//2
+    # Sparse matrix to hold the results
+    result = sp.sparse.lil_matrix((1, dim))
+    # Adjacency matrix for the graph
+    M = nx.to_scipy_sparse_matrix(G, format = "coo")
+
+    for i,j,v in zip(M.row, M.col, M.data):
+        # Only care about northeastern corner of the matrix
+        if not j > i:
+            continue
+        ind = i*n - (i*(i+1))//2 + j - i - 1 # Nothing to see here, move along.
+        # Add the encountered element at the appropriate index of result
+        result[0, ind] = v
+    
     return result
 
 def evolve_graph(G, method, argdict, n_steps, picdir = None, pos = None):
-    if pos == None:
+    if picdir and pos == None:
         pos = nx.spring_layout(G)
     
-    M = np.array(unroll_adjacency_matrix(G))
+    
+    M = unroll_adjacency_matrix(G)
     for i in xrange(n_steps):
-        print i
         method(**argdict)
         if picdir:
             nx.draw(G, pos = pos)
@@ -125,17 +156,12 @@ def evolve_graph(G, method, argdict, n_steps, picdir = None, pos = None):
             plt.savefig(filename);
             plt.clf();
         row = unroll_adjacency_matrix(G)
-        M = np.vstack((M, row))
+        M = sp.sparse.vstack((M, row))
     
     #
     return M
 
 if __name__ == "__main__":
     G = nx.barabasi_albert_graph(10,2)
-    M = evolve_graph(G = G, method = rewire_ba, argdict = {'G' : G},
-                       n_steps = 10, picdir = "pics/")
-    print M.shape
-#    G = nx.barabasi_albert_graph(3,2)
-#    M = nx.to_numpy_matrix(G)
-#    print M
-#    print unroll_matrix(M)
+    M = evolve_graph(G, rewire_ba, argdict = {'G' : G}, n_steps = 5)
+    print M.todense()

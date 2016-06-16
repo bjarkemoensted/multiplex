@@ -74,16 +74,18 @@ class Testunroll_adjacency_matrix(unittest.TestCase):
             for j in xrange(i + 1, cols):
                 result.append(M[i, j])
             #
-        return result
+        return np.array(result)
 
     def test_unroll_adjacency_matrix(self):
         n_nodes = [2, 3, 5, 10, 42, 60]
         for n in n_nodes:
-            G = nx.barabasi_albert_graph(n, n//2)
-            
+            G = nx.barabasi_albert_graph(n, n//2)            
             correct = self.npunroller(G)
             test = mptools.unroll_adjacency_matrix(G)
-            self.assertEqual(correct, test)
+            test_dense = test.toarray()
+            msg = "Correct: "+str(test_dense)
+            msg += "\n Test result: "+str(test_dense)
+            self.assertTrue(np.array_equiv(correct, test_dense), msg = msg)
     
 
 if __name__ == '__main__':
